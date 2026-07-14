@@ -2,8 +2,8 @@ import os, telebot, sqlite3, threading
 from telebot import types
 from flask import Flask
 
-# Yotoqxona botingiz tokeni
-TOKEN = "8824857133:AAHTt70dqfurIwnXhPpEAUqgpCB3zhyWG3A"
+# Yangi tokeningiz kod ichiga yuz foiz to'g'ri joylashtirildi
+TOKEN = "8824857133:AAHSwpO2EtcqW0EQMKEbbTnAduW_HiK7R7s"
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
@@ -87,7 +87,7 @@ def tx(m):
         try:
             i, s = txt.split("+")
             dB("INSERT INTO q VALUES (?, ?, ?) ON CONFLICT(uid, ism) DO UPDATE SET sm=sm+?", (uid, i.strip(), int(s.strip()), int(s.strip())))
-            dB("INSERT INTO h VALUES (?, ?, ?)", (uid, i.strip(), f"▪ ... r"))
+            dB("INSERT INTO h VALUES (?, ?, ?)", (uid, i.strip(), f"▪️ Qarz qo'shildi: +{s.strip()} r"))
             r = dB("SELECT sm FROM q WHERE uid=? AND ism=?", (uid, i.strip()))
             bot.send_message(m.chat.id, f"✅ {i.strip()} qarziga qo'shildi. Umumiy: {r[0][0]} r.", reply_markup=klaviatura())
         except: bot.send_message(m.chat.id, "❌ Xato format. Misol: Ali+500")
@@ -97,7 +97,7 @@ def tx(m):
         try:
             i, s = txt.split("-")
             dB("INSERT INTO q VALUES (?, ?, 0) ON CONFLICT(uid, ism) DO UPDATE SET sm=sm-?", (uid, i.strip(), int(s.strip())))
-            dB("INSERT INTO h VALUES (?, ?, ?)", (uid, i.strip(), f"🔻 ... r"))
+            dB("INSERT INTO h VALUES (?, ?, ?)", (uid, i.strip(), f"🔻 Qarz ayirildi: -{s.strip()} r"))
             r = dB("SELECT sm FROM q WHERE uid=? AND ism=?", (uid, i.strip()))
             bot.send_message(m.chat.id, f"✅ {i.strip()} qarzidan ayirildi. Umumiy: {r[0][0]} r.", reply_markup=klaviatura())
         except: bot.send_message(m.chat.id, "❌ Xato format. Misol: Ali-300")
