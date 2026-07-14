@@ -33,10 +33,11 @@ def klaviatura():
 
 @bot.message_handler(commands=['start'])
 def st(m):
-    dB("INSERT OR IGNORE INTO t VALUES (?, 'Energetik', 150)", (m.from_user.id,))
-    dB("INSERT OR IGNORE INTO t VALUES (?, 'Pechene1', 60)", (m.from_user.id,))
-    dB("INSERT OR IGNORE INTO t VALUES (?, 'Flash', 100)", (m.from_user.id,))
-    dB("INSERT OR IGNORE INTO t VALUES (?, 'Rulet', 140)", (m.from_user.id,))
+    uid = m.from_user.id
+    dB("INSERT OR IGNORE INTO t VALUES (?, 'Energetik', 150)", (uid,))
+    dB("INSERT OR IGNORE INTO t VALUES (?, 'Pechene1', 60)", (uid,))
+    dB("INSERT OR IGNORE INTO t VALUES (?, 'Flash', 100)", (uid,))
+    dB("INSERT OR IGNORE INTO t VALUES (?, 'Rulet', 140)", (uid,))
     
     yo_riqnomi = (
         "👋 *Salom! Men yotoqxona uchun qarz daftari botiman.*\n\n"
@@ -82,29 +83,26 @@ def tx(m):
             bot.send_message(m.chat.id, f"🔸 *{nomi}*: {nx} rubl", parse_mode="Markdown", reply_markup=inline_kb)
         return
 
-    # Qo'lda qarz qo'shish
     if "+" in txt:
         try:
             i, s = txt.split("+")
             dB("INSERT INTO q VALUES (?, ?, ?) ON CONFLICT(uid, ism) DO UPDATE SET sm=sm+?", (uid, i.strip(), int(s.strip()), int(s.strip())))
-            dB("INSERT INTO h VALUES (?, ?, ?)", (uid, i.strip(), f"▪️ Qarz qo'shildi: +{s.strip()} r"))
+            dB("INSERT INTO h VALUES (?, ?, ?)", (uid, i.strip(), f"▪ ... r"))
             r = dB("SELECT sm FROM q WHERE uid=? AND ism=?", (uid, i.strip()))
             bot.send_message(m.chat.id, f"✅ {i.strip()} qarziga qo'shildi. Umumiy: {r[0][0]} r.", reply_markup=klaviatura())
         except: bot.send_message(m.chat.id, "❌ Xato format. Misol: Ali+500")
         return
 
-    # Qo'lda qarz ayirish
     elif "-" in txt:
         try:
             i, s = txt.split("-")
             dB("INSERT INTO q VALUES (?, ?, 0) ON CONFLICT(uid, ism) DO UPDATE SET sm=sm-?", (uid, i.strip(), int(s.strip())))
-            dB("INSERT INTO h VALUES (?, ?, ?)", (uid, i.strip(), f"🔻 Qarz ayirildi: -{s.strip()} r"))
+            dB("INSERT INTO h VALUES (?, ?, ?)", (uid, i.strip(), f"🔻 ... r"))
             r = dB("SELECT sm FROM q WHERE uid=? AND ism=?", (uid, i.strip()))
             bot.send_message(m.chat.id, f"✅ {i.strip()} qarzidan ayirildi. Umumiy: {r[0][0]} r.", reply_markup=klaviatura())
         except: bot.send_message(m.chat.id, "❌ Xato format. Misol: Ali-300")
         return
 
-    # TOVAR QO'SHISH (Matn oxiridagi oxirgi so'z toza raqam bo'lsa)
     temp_sp = txt.split()
     if len(temp_sp) >= 2 and temp_sp[-1].isdigit():
         x = int(temp_sp[-1])
@@ -113,7 +111,6 @@ def tx(m):
         bot.send_message(m.chat.id, f"✅ Tovar saqlandi: *{n}* -> {x} r.", parse_mode="Markdown", reply_markup=klaviatura())
         return
 
-    # 🛍 MUTLOQ XATOSIZ SAVDO PARSERI
     sp = txt.replace("ta", " ta").split()
     if len(sp) >= 3:
         xaridor_ismi = sp[0].strip()
@@ -131,16 +128,12 @@ def tx(m):
                 i += 1
                 
             nx = dB("SELECT nx FROM t WHERE uid=? AND nomi LIKE ?", (uid, t_nomi))
-            if nx and len(nx) > 0 and len(nx[0]) > 0:
-                tovar_narxi = int(nx[0][0])  # RO'YXAT ICHIDAN TOZA RAQAM AJRATILDI
+            if nx and len(nx) > 0:
+                tovar_narxi = int(nx[0][0])
                 oraliq_summa = tovar_narxi * miqdor
                 jami_summa += oraliq_summa
                 jurnal += f"▪️ {t_nomi} ({tovar_narxi} r) x {miqdor} = {oraliq_summa} r\n"
                 tovarlar_ro_yxati.append(f"• {t_nomi} x{miqdor} ({oraliq_summa} r)")
-            else:
-                if t_nomi not in ["📋", "📦", "Qarzlar", "Mahsulotlar"]:
-                    bot.send_message(m.chat.id, f"❌ Bazada `{t_nomi}` topilmadi. Avval `{t_nomi} [narxi]` deb yozib qo'shing.", reply_markup=klaviatura())
-                    return
             
         if jami_summa > 0:
             dB("INSERT INTO q VALUES (?, ?, ?) ON CONFLICT(uid, ism) DO UPDATE SET sm=sm+?", (uid, xaridor_ismi, jami_summa, jami_summa))
