@@ -1,13 +1,11 @@
-import os, telebot, sqlite3, threading
+import os, telebot, sqlite3
 from telebot import types
-from flask import Flask
+from flask import Flask, request
 
-# Bot Tokeningiz mutloq xatosiz ulangan
-bot = telebot.TeleBot("8824857133:AAHTt70dqfurIwnXhPpEAUqgpCB3zhyWG3A")
+# Birinchi yotoqxona boti tokeningiz muhrlandi
+TOKEN = "8824857133:AAHTt70dqfurIwnXhPpEAUqgpCB3zhyWG3A"
+bot = telebot.TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
-
-@app.route('/')
-def home(): return "Bot 24/7 rejimda muvaffaqiyatli ishlamoqda!"
 
 def dB(q, p=()):
     u = sqlite3.connect("yotoqxona.db")
@@ -18,9 +16,22 @@ def dB(q, p=()):
     u.close()
     return r
 
+# Jadvallarni yaratish
 dB("CREATE TABLE IF NOT EXISTS q (uid INT, ism TEXT, sm INT DEFAULT 0, PRIMARY KEY(uid,ism))")
 dB("CREATE TABLE IF NOT EXISTS t (uid INT, nomi TEXT, nx INT, PRIMARY KEY(uid,nomi))")
 dB("CREATE TABLE IF NOT EXISTS h (uid INT, ism TEXT, info TEXT)")
+
+# Render-dan signal kelganda ishlaydigan Webhook manzili
+@app.route('/' + TOKEN, methods=['POST'])
+def getMessage():
+    json_string = request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_string)
+    bot.process_new_updates([update])
+    return "!", 200
+
+@app.route('/')
+def home():
+    return "Yotoqxona CRM bot 24/7 Webhook rejimida faol!", 200
 
 def klaviatura():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -34,11 +45,12 @@ def st(m):
     dB("INSERT OR IGNORE INTO t VALUES (?, 'Energetik', 150)", (m.from_user.id,))
     dB("INSERT OR IGNORE INTO t VALUES (?, 'Pechene1', 60)", (m.from_user.id,))
     dB("INSERT OR IGNORE INTO t VALUES (?, 'Flash', 100)", (m.from_user.id,))
+    
     yo_riqnomi = (
         "👋 *Salom! Men yotoqxona uchun qarz daftari botiman.*\n\n"
         "📖 *Mendan qanday foydalaniladi?*:\n\n"
         "1️⃣ *Tovar qo'shish yoki narx o'zgartirish:*\n"
-        "👉 Nomi va narxini yozing: `Kofe 120`\n\n"
+        "👉 Nomi va narxini yozing: `Kofe 120` yoki `Yashil choy 100`\n\n"
         "2️⃣ *Qarzga narsa sotganda (O'zim hisoblayman):*\n"
         "👉 Kim nima va nechta olganini yozing: `Ali Flash 2ta Pechene1 3ta`\n\n"
         "3️⃣ *Qo'lda qarz qo'shish yoki ayirish:*\n"
@@ -49,6 +61,7 @@ def st(m):
 @bot.message_handler(func=lambda msg: True)
 def tx(m):
     txt, uid = m.text.strip(), m.from_user.id
+    
     if txt == "📋 Qarzlar Ro'yxati":
         data = dB("SELECT ism, sm FROM q WHERE uid=?", (uid,))
         if not data:
@@ -63,6 +76,7 @@ def tx(m):
             inline_kb.add(btn)
             bot.send_message(m.chat.id, f"👤 *Xaridor:* {ism}\n💰 *Umumiy qarz:* {sm} rubl{chek_matni}", parse_mode="Markdown", reply_markup=inline_kb)
         return
+
     elif txt == "📦 Mahsulotlar (Narxlar)":
         data = dB("SELECT nomi, nx FROM t WHERE uid=?", (uid,))
         if not data:
@@ -83,8 +97,9 @@ def tx(m):
             dB("INSERT INTO h VALUES (?, ?, ?)", (uid, i.strip(), f"▪️ Qarz qo'shildi: +{s.strip()} r"))
             r = dB("SELECT sm FROM q WHERE uid=? AND ism=?", (uid, i.strip()))
             bot.send_message(m.chat.id, f"✅ {i.strip()} qarziga qo'shildi. Umumiy: {r} r.", reply_markup=klaviatura())
-        except: bot.send_message(m.chat.id, "❌ Xato format.")
+        except: bot.send_message(m.chat.id, "❌ Xato format. Misol: Ali+500")
         return
+
     elif "-" in txt:
         try:
             i, s = txt.split("-")
@@ -92,44 +107,52 @@ def tx(m):
             dB("INSERT INTO h VALUES (?, ?, ?)", (uid, i.strip(), f"🔻 Qarz ayirildi: -{s.strip()} r"))
             r = dB("SELECT sm FROM q WHERE uid=? AND ism=?", (uid, i.strip()))
             bot.send_message(m.chat.id, f"✅ {i.strip()} qarzidan ayirildi. Umumiy: {r} r.", reply_markup=klaviatura())
-        except: bot.send_message(m.chat.id, "❌ Xato format.")
+        except: bot.send_message(m.chat.id, "❌ Xato format. Misol: Ali-300")
         return
 
     sp = txt.replace("ta", " ta").split()
-    if len(sp) == 2 and sp.isdigit():
-        n, x = sp.strip(), int(sp)
+    
+    # 🛠 TOVAR QO'SHISH (Matn oxiridagi raqamni to'g'ri ajratib oladi)
+    if len(sp) >= 2 and sp[-1].isdigit():
+        x = int(sp[-1])
+        n = " ".join(sp[:-1]).strip()
         dB("INSERT INTO t VALUES (?, ?, ?) ON CONFLICT(uid, nomi) DO UPDATE SET nx=?", (uid, n, x, x))
-        bot.send_message(m.chat.id, f"✅ Tovar saqlandi: *{n}* -> {x} r.", parse_mode="Markdown", reply_markup=klaviatura())
+        bot.send_message(m.chat.id, f"✅ Tovar saqlandi: *{n}* -> {x} rubl.", parse_mode="Markdown", reply_markup=klaviatura())
         return
         
+    # KO'P TOVARLI SAVDO TIZIMI
     if len(sp) >= 3:
-        xaridor_ismi = str(sp).strip()
+        xaridor_ismi = sp[0].strip()
         jurnal, jami_summa = "", 0
         i = 1
         tovarlar_ro_yxati = []
         while i < len(sp):
-            t_nomi = str(sp[i]).strip()
+            t_nomi = sp[i].strip()
             miqdor = 1
             if i + 1 < len(sp) and sp[i+1].isdigit():
                 miqdor = int(sp[i+1])
                 i += 2
-            else: i += 1
+            else:
+                i += 1
+            
             nx = dB("SELECT nx FROM t WHERE uid=? AND nomi LIKE ?", (uid, t_nomi))
             if nx and len(nx) > 0:
-                tovar_narxi = int(nx)
+                tovar_narxi = int(nx[0][0])
                 oraliq_summa = tovar_narxi * miqdor
                 jami_summa += oraliq_summa
                 jurnal += f"▪️ {t_nomi} ({tovar_narxi} r) x {miqdor} = {oraliq_summa} r\n"
                 tovarlar_ro_yxati.append(f"• {t_nomi} x{miqdor} ({oraliq_summa} r)")
             else:
-                bot.send_message(m.chat.id, f"❌ Bazada `{t_nomi}` topilmadi.", reply_markup=klaviatura())
+                bot.send_message(m.chat.id, f"❌ Bazada `{t_nomi}` topilmadi. Avval `{t_nomi} [narxi]` deb yozib qo'shing.", reply_markup=klaviatura())
                 return
         if jami_summa > 0:
             dB("INSERT INTO q VALUES (?, ?, ?) ON CONFLICT(uid, ism) DO UPDATE SET sm=sm+?", (uid, xaridor_ismi, jami_summa, jami_summa))
-            for t_matn in tovarlar_ro_yxati: dB("INSERT INTO h VALUES (?, ?, ?)", (uid, xaridor_ismi, t_matn))
+            for tovar_matn in tovarlar_ro_yxati:
+                dB("INSERT INTO h VALUES (?, ?, ?)", (uid, xaridor_ismi, tovar_matn))
             r = dB("SELECT sm FROM q WHERE uid=? AND ism=?", (uid, xaridor_ismi))
-            bot.send_message(m.chat.id, f"🛍 *Sotuv hisoboti:*\n\n👤 Xaridor: *{xaridor_ismi}*\n{jurnal}🧮 Jami savdo: *{jami_summa} rubl*\n💰 *{xaridor_ismi}* qarzi: *{r} rubl*.", parse_mode="Markdown", reply_markup=klaviatura())
-    else: bot.send_message(m.chat.id, "❌ Tushunarsiz format.", reply_markup=klaviatura())
+            bot.send_message(m.chat.id, f"🛍 *Sotuv hisoboti:*\n\n👤 Xaridor: *{xaridor_ismi}*\n{jurnal}🧮 Jami savdo: *{jami_summa} rubl*\n💰 *{xaridor_ismi}* umumiy qarzi: *{r[0][0]} rubl*.", parse_mode="Markdown", reply_markup=klaviatura())
+    else:
+        bot.send_message(m.chat.id, "❌ Tushunarsiz format. Pastdagi tugmalardan foydalaning.", reply_markup=klaviatura())
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_boshqar(call):
@@ -139,16 +162,18 @@ def callback_boshqar(call):
         ism = data_str.replace("del_qarz:", "").strip()
         dB("DELETE FROM q WHERE uid=? AND ism=?", (uid, ism))
         dB("DELETE FROM h WHERE uid=? AND ism=?", (uid, ism))
-        bot.answer_callback_query(call.id, "👤 O'chirildi!")
-        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=f"🗑 *{ism}* o'chirildi.", parse_mode="Markdown")
+        bot.answer_callback_query(call.id, f"👤 {ism} o'chirildi!")
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=f"🗑 *{ism}* muvaffaqiyatli o'chirildi.", parse_mode="Markdown")
     elif "del_tovar:" in data_str:
         nomi = data_str.replace("del_tovar:", "").strip()
         dB("DELETE FROM t WHERE uid=? AND nomi=?", (uid, nomi))
-        bot.answer_callback_query(call.id, "📦 O'chirildi!")
+        bot.answer_callback_query(call.id, f"📦 {nomi} o'chirildi!")
         bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=f"🗑 Tovar o'chirildi: *{nomi}*", parse_mode="Markdown")
 
 if __name__ == "__main__":
-    bot_thread = threading.Thread(target=lambda: bot.infinity_polling(timeout=20, long_polling_timeout=10))
-    bot_thread.daemon = True
-    bot_thread.start()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    bot.remove_webhook()
+    RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL")
+    if RENDER_URL:
+        bot.set_webhook(url=RENDER_URL + '/' + TOKEN)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
