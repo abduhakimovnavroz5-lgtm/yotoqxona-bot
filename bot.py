@@ -2,7 +2,7 @@ import os, telebot, sqlite3, threading
 from telebot import types
 from flask import Flask
 
-# Birinchi yotoqxona botingiz tokeni xavfsiz ulandi
+# Yotoqxona botingiz tokeni
 TOKEN = "8824857133:AAHTt70dqfurIwnXhPpEAUqgpCB3zhyWG3A"
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
@@ -42,7 +42,7 @@ def st(m):
         "👋 *Salom! Men yotoqxona uchun qarz daftari botiman.*\n\n"
         "📖 *Mendan qanday foydalaniladi?*:\n\n"
         "1️⃣ *Tovar qo'shish yoki narx o'zgartirish:*\n"
-        "👉 Nomi va narxini yozing: `Kofe 120` yoki `Yashil choy 100`\n\n"
+        "👉 Nomi va narxini yozing: `Kofe 120`\n\n"
         "2️⃣ *Qarzga narsa sotganda (O'zim hisoblayman):*\n"
         "👉 Kim nima va nechta olganini yozing: `Ali Flash 2ta Rulet 1ta`\n\n"
         "3️⃣ *Qo'lda qarz qo'shish yoki ayirish:*\n"
@@ -113,35 +113,34 @@ def tx(m):
         bot.send_message(m.chat.id, f"✅ Tovar saqlandi: *{n}* -> {x} r.", parse_mode="Markdown", reply_markup=klaviatura())
         return
 
-    # 🛍 MUTLOQ XATOSIZ SAVDO PARSERI (Masalan: Azim Rulet 1ta Flash 2ta)
-    # Matn tarkibidan "ta" so'zi bor qismlarni qidirib ajratadi
-    sp = txt.split()
+    # 🛍 MUTLOQ XATOSIZ SAVDO PARSERI
+    sp = txt.replace("ta", " ta").split()
     if len(sp) >= 3:
         xaridor_ismi = sp[0].strip()
         jurnal, jami_summa = "", 0
         tovarlar_ro_yxati = []
         
-        # Qolgan matn ichidan mahsulot va uning miqdorini juftlikda qidiramiz
         i = 1
         while i < len(sp):
-            # Agar so'z oxiri "ta" bilan tugasa (masalan: 1ta, 2ta) yoki faqat raqam bo'lsa
-            if "ta" in sp[i] or sp[i].isdigit():
-                miqdor_matn = sp[i].replace("ta", "").strip()
-                if miqdor_matn.isdigit() and i - 1 >= 1:
-                    miqdor = int(miqdor_matn)
-                    t_nomi = sp[i-1].strip()
-                    
-                    nx = dB("SELECT nx FROM t WHERE uid=? AND nomi LIKE ?", (uid, t_nomi))
-                    if nx and len(nx) > 0:
-                        tovar_narxi = int(nx[0][0])
-                        oraliq_summa = tovar_narxi * miqdor
-                        jami_summa += oraliq_summa
-                        jurnal += f"▪️ {t_nomi} ({tovar_narxi} r) x {miqdor} = {oraliq_summa} r\n"
-                        tovarlar_ro_yxati.append(f"• {t_nomi} x{miqdor} ({oraliq_summa} r)")
-                    else:
-                        bot.send_message(m.chat.id, f"❌ Bazada `{t_nomi}` topilmadi. Avval `{t_nomi} [narxi]` deb yozib qo'shing.", reply_markup=klaviatura())
-                        return
-            i += 1
+            t_nomi = sp[i].strip()
+            miqdor = 1
+            if i + 1 < len(sp) and sp[i+1].isdigit():
+                miqdor = int(sp[i+1])
+                i += 2
+            else:
+                i += 1
+                
+            nx = dB("SELECT nx FROM t WHERE uid=? AND nomi LIKE ?", (uid, t_nomi))
+            if nx and len(nx) > 0 and len(nx[0]) > 0:
+                tovar_narxi = int(nx[0][0])  # RO'YXAT ICHIDAN TOZA RAQAM AJRATILDI
+                oraliq_summa = tovar_narxi * miqdor
+                jami_summa += oraliq_summa
+                jurnal += f"▪️ {t_nomi} ({tovar_narxi} r) x {miqdor} = {oraliq_summa} r\n"
+                tovarlar_ro_yxati.append(f"• {t_nomi} x{miqdor} ({oraliq_summa} r)")
+            else:
+                if t_nomi not in ["📋", "📦", "Qarzlar", "Mahsulotlar"]:
+                    bot.send_message(m.chat.id, f"❌ Bazada `{t_nomi}` topilmadi. Avval `{t_nomi} [narxi]` deb yozib qo'shing.", reply_markup=klaviatura())
+                    return
             
         if jami_summa > 0:
             dB("INSERT INTO q VALUES (?, ?, ?) ON CONFLICT(uid, ism) DO UPDATE SET sm=sm+?", (uid, xaridor_ismi, jami_summa, jami_summa))
